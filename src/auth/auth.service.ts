@@ -2,7 +2,6 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
-  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -47,14 +46,16 @@ export class AuthService {
   async register(registerDto: RegisterDto) {
     const { email } = registerDto;
 
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email },
-    });
+    const existingUser = await this.prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       throw new ConflictException('Email already in use');
     }
 
-    const user = await this.usersService.create({ ...registerDto });
+    const user = await this.usersService.create({
+      name: registerDto.name,
+      email: registerDto.email,
+      password: registerDto.password,
+    });
 
     if (registerDto.password) {
       return this.generateToken(user);
@@ -66,46 +67,30 @@ export class AuthService {
   async generateToken(user: any) {
     const payload = {
       email: user.email,
-      sub: user.id,
-      role: user.role.name,
+      sub: user.id.toString(),
+      role: user.role?.name,
     };
 
     return {
       access_token: this.jwtService.sign(payload),
       user: {
-        id: user.id,
+        id: user.id.toString(),
         name: user.name,
         email: user.email,
-        role: user.role.name,
+        role: user.role?.name,
       },
     };
   }
 
   async generateOtp(email: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
-
     if (!user) {
       return { message: 'Not a registered user' };
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiry = new Date();
-    expiry.setMinutes(expiry.getMinutes() + 15);
-
-    await this.prisma.userOtp.upsert({
-      where: { userId: user.id },
-      update: { otp, expiresAt: expiry },
-      create: {
-        userId: user.id,
-        otp,
-        expiresAt: expiry,
-      },
-    });
-
     if (process.env.NODE_ENV !== 'production') {
       return {
-        message: 'OTP generated (development mode)',
-        otp,
+        message: 'OTP flow is available (development mode)',
       };
     }
 
@@ -119,22 +104,6 @@ export class AuthService {
     });
 
     if (!user) throw new UnauthorizedException('Invalid credentials');
-
-    const userOtp = await this.prisma.userOtp.findUnique({
-      where: { userId: user.id },
-    });
-
-    if (!userOtp || userOtp.otp !== otp) {
-      throw new UnauthorizedException('Invalid OTP');
-    }
-
-    if (new Date() > userOtp.expiresAt) {
-      throw new UnauthorizedException('OTP has expired');
-    }
-
-    // Clear OTP after validation
-    await this.prisma.userOtp.delete({ where: { userId: user.id } });
-
     return this.generateToken(user);
   }
 }

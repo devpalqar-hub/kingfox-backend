@@ -1,98 +1,52 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  UseGuards,
-  Request,
-  Query,
+  Controller, Get, Post, Body, Patch, Param, Delete,
+  UseGuards, Request, ParseIntPipe,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { ResponseService } from 'src/response/response.service';
-import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
-import { RolesGuard } from 'src/common/guards/roles.guard';
-import { Roles } from 'src/common/decorators/roles.decorator';
-import { Public } from 'src/common/decorators/public.decorator';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 
-@Controller('users')
+@ApiTags('Users')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
+@Controller('users')
 export class UsersController {
-  constructor(
-    private readonly usersService: UsersService,
-    private readonly responseService: ResponseService,
-  ) {}
+  constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles('admin')
-  async create(@Body() createUserDto: CreateUserDto) {
-    const user = await this.usersService.create(createUserDto);
-    return this.responseService.successResponse(
-      'User Created Sucessfully',
-      user,
-    );
+  async create(@Body() dto: CreateUserDto) {
+    return this.usersService.create(dto);
   }
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles('admin')
-  async findAll(@Query('role') role?: string) {
-    if (role) {
-      return this.usersService.findByRole(role);
-    }
-    const users = await this.usersService.findAll();
-    return this.responseService.successResponse('Users Found', users);
-  }
-
-  @Get('roles')
-  @Public()
-  async getRoles(@Request() req) {
-    const roles = await this.usersService.findallroles();
-    return this.responseService.successResponse('Roles Found', roles);
-  }
-
-  @Get('staff')
-  @UseGuards(RolesGuard)
-  @Roles('admin')
-  async findAllStaff() {
-    const staff = await this.usersService.findByRole('staff');
-    return this.responseService.successResponse('Staff Found', staff);
+  findAll() {
+    return this.usersService.findAll();
   }
 
   @Get('profile')
-  async getProfile(@Request() req) {
-    const user = await this.usersService.findOne(req.user.id);
-    return this.responseService.successResponse('User Profile', user);
+  getProfile(@Request() req) {
+    return this.usersService.findOne(req.user.sub);
   }
 
   @Get(':id')
-  @UseGuards(RolesGuard)
-  @Roles('admin')
-  async findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.findOne(id);
   }
 
   @Patch('profile')
-  async updateProfile(@Request() req, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(req.user.id, updateUserDto);
+  updateProfile(@Request() req, @Body() dto: UpdateUserDto) {
+    return this.usersService.update(req.user.sub, dto);
   }
 
   @Patch(':id')
-  @UseGuards(RolesGuard)
-  @Roles('admin')
-  async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(id, updateUserDto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
+    return this.usersService.update(id, dto);
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles('admin')
-  async remove(@Param('id') id: string) {
+  remove(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.remove(id);
   }
 }

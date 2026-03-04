@@ -1,58 +1,42 @@
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
+
+export interface CreateUserInput {
+  name: string;
+  email: string;
+  password?: string;
+  roleId?: number;
+  branchId?: number;
+}
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createUserDto: CreateUserDto) {
-    const {
-      email,
-      password,
-      role: roleName,
-      priority: inputPriority,
-    } = createUserDto;
+  async create(input: CreateUserInput) {
+    const existing = await this.prisma.user.findUnique({ where: { email: input.email } });
+    if (existing) throw new ConflictException('Email already in use');
 
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email },
-    });
-    if (existingUser) throw new ConflictException('Email already in use');
+    const hashedPassword = input.password ? await bcrypt.hash(input.password, 10) : null;
 
-    const role = await this.prisma.role.findUnique({
-      where: { name: roleName },
-    });
-    if (!role) {
-      throw new ConflictException(
-        `Invalid role. Available roles: 'admin', 'staff', 'customer'`,
-      );
+    // Find or use default role
+    let roleId = input.roleId;
+    if (!roleId) {
+      const defaultRole = await this.prisma.role.findFirst({ where: { name: 'staff' } });
+      if (!defaultRole) throw new ConflictException('Default role not found. Please seed roles first.');
+      roleId = Number(defaultRole.id);
     }
-
-    delete createUserDto.role;
-
-    if (inputPriority && role.name === 'staff') {
-      const totalStaff = await this.prisma.user.count({
-        where: { roleId: role.id },
-      });
-      const finalPriority = Math.min(inputPriority, totalStaff + 1);
-      createUserDto.priority = finalPriority;
-    }
-
-    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
     const user = await this.prisma.user.create({
       data: {
-        ...createUserDto,
+        name: input.name,
+        email: input.email,
         password: hashedPassword,
-        role: { connect: { id: role.id } },
+        roleId: BigInt(roleId),
+        branchId: input.branchId ? BigInt(input.branchId) : null,
       },
-      include: { role: true },
+      include: { role: true, branch: true },
     });
 
     const { password: _, ...result } = user;
@@ -65,55 +49,29 @@ export class UsersService {
         id: true,
         name: true,
         email: true,
-        phone: true,
-        status: true,
+        branchId: true,
         roleId: true,
         role: true,
+        branch: true,
         createdAt: true,
-        updatedAt: true,
       },
     });
   }
 
-  async findByRole(roleName: string) {
-    return this.prisma.user.findMany({
-      where: { role: { name: roleName } },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        status: true,
-        roleId: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-  }
-
-  async findallroles() {
-    return this.prisma.role.findMany({
-      select: { id: true, name: true },
-    });
-  }
-
-  async findOne(id: string) {
+  async findOne(id: string | number) {
     const user = await this.prisma.user.findUnique({
-      where: { id },
+      where: { id: BigInt(id) },
       select: {
         id: true,
         name: true,
         email: true,
-        phone: true,
-        status: true,
+        branchId: true,
         roleId: true,
         role: true,
+        branch: true,
         createdAt: true,
-        updatedAt: true,
       },
     });
-
     if (!user) throw new NotFoundException(`User with ID ${id} not found`);
     return user;
   }
@@ -125,45 +83,26 @@ export class UsersService {
     });
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto) {
-    await this.findOne(id); // ensure user exists
+  async update(id: string | number, data: Partial<CreateUserInput>) {
+    await this.findOne(id);
+    const updateData: any = {};
+    if (data.name) updateData.name = data.name;
+    if (data.password) updateData.password = await bcrypt.hash(data.password, 10);
+    if (data.roleId) updateData.roleId = BigInt(data.roleId);
+    if (data.branchId) updateData.branchId = BigInt(data.branchId);
 
-    const updateData: any = { ...updateUserDto };
-
-    if (updateUserDto.password) {
-      updateData.password = await bcrypt.hash(updateUserDto.password, 10);
-    }
-
-    if (updateUserDto.role) {
-      const role = await this.prisma.role.findUnique({
-        where: { name: updateUserDto.role },
-      });
-
-      if (!role) {
-        throw new ConflictException(
-          `Invalid role. Available roles: 'admin', 'staff', 'customer'`,
-        );
-      }
-
-      updateData.roleId = role.id;
-      delete updateData.role;
-    }
-
-    const updatedUser = await this.prisma.user.update({
-      where: { id },
+    const user = await this.prisma.user.update({
+      where: { id: BigInt(id) },
       data: updateData,
       include: { role: true },
     });
-
-    const { password: _, ...result } = updatedUser;
+    const { password: _, ...result } = user;
     return result;
   }
 
-  async remove(id: string) {
-    await this.findOne(id); // ensure user exists
-
-    await this.prisma.user.delete({ where: { id } });
-
+  async remove(id: string | number) {
+    await this.findOne(id);
+    await this.prisma.user.delete({ where: { id: BigInt(id) } });
     return { message: `User with ID ${id} deleted successfully` };
   }
 }

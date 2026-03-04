@@ -4,54 +4,70 @@ import * as bcrypt from 'bcrypt';
 const prisma = new PrismaClient();
 
 async function main() {
-  // Create roles
+  // Seed roles
   const adminRole = await prisma.role.upsert({
     where: { name: 'admin' },
     update: {},
     create: { name: 'admin' },
   });
 
-  const staffRole = await prisma.role.upsert({
+  await prisma.role.upsert({
+    where: { name: 'manager' },
+    update: {},
+    create: { name: 'manager' },
+  });
+
+  await prisma.role.upsert({
     where: { name: 'staff' },
     update: {},
     create: { name: 'staff' },
   });
 
-  const customerRole = await prisma.role.upsert({
-    where: { name: 'client' },
-    update: {},
-    create: { name: 'client' },
-  });
-
   await prisma.role.upsert({
-    where: { name: 'doctor' },
+    where: { name: 'cashier' },
     update: {},
-    create: { name: 'doctor' },
+    create: { name: 'cashier' },
   });
 
-  // Create admin user
-  const existingRoles = await prisma.role.findMany();
-  const adminRoleExist = existingRoles.find((r) => r.name === 'admin');
-
-  if (!adminRoleExist) {
-    throw new Error(
-      "Role 'admin' not found. Make sure roles are seeded before users.",
-    );
-  }
-  const hashedPassword = await bcrypt.hash('password@123', 10);
-  await prisma.user.upsert({
-    where: { email: 'admin@project.com' },
+  // Seed default branches
+  const shopBranch = await prisma.branch.upsert({
+    where: { id: BigInt(1) },
     update: {},
     create: {
-      email: 'admin@project.com',
-      name: 'Admin',
-      password: hashedPassword,
-      role: { connect: { id: adminRoleExist.id } },
-      status: 'active',
+      name: 'Main Shop',
+      phone: '0000000000',
+      address: 'Main Street',
+      type: 'SHOP',
     },
   });
 
-  console.log('Database seeded successfully!');
+  await prisma.branch.upsert({
+    where: { id: BigInt(2) },
+    update: {},
+    create: {
+      name: 'Central Warehouse',
+      phone: '0000000001',
+      address: 'Warehouse Zone',
+      type: 'WAREHOUSE',
+    },
+  });
+
+  // Seed admin user
+  const hashedPassword = await bcrypt.hash('Admin@1234', 10);
+  await prisma.user.upsert({
+    where: { email: 'admin@kingfox.com' },
+    update: {},
+    create: {
+      email: 'admin@kingfox.com',
+      name: 'Admin',
+      password: hashedPassword,
+      roleId: adminRole.id,
+      branchId: shopBranch.id,
+    },
+  });
+
+  console.log('✅ Database seeded successfully!');
+  console.log('   Admin: admin@kingfox.com / Admin@1234');
 }
 
 main()

@@ -3,48 +3,547 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql" // Change to mysql/sqlite if needed
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-enum UserStatus {
-  active
-  disabled
+// =====================================================
+// ENUMS
+// =====================================================
+
+enum BranchType {
+  SHOP
+  WAREHOUSE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+  RETURNED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PACKED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum CampaignStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum TransferStatus {
+  PENDING
+  APPROVED
+  COMPLETED
+}
+
+enum ReturnType {
+  INVOICE
+  ONLINE_ORDER
+}
+
+// =====================================================
+// CORE STRUCTURE
+// =====================================================
+
+model Branch {
+  id        BigInt     @id @default(autoincrement())
+  name      String
+  phone     String?
+  address   String?
+  type      BranchType
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  users           User[]
+  inventory       Inventory[]
+  stockMovements  StockMovement[]
+  purchaseOrders  PurchaseOrder[]
+  invoices        Invoice[]
+  returns         Return[]
+  vouchers        Voucher[]
+  onlineOrders    OnlineOrder[]
+  transfersFrom   StockTransfer[] @relation("TransferFrom")
+  transfersTo     StockTransfer[] @relation("TransferTo")
+
+  @@map("branches")
+}
+
+model Role {
+  id    BigInt   @id @default(autoincrement())
+  name  String   @unique
+  users User[]
+
+  @@map("roles")
 }
 
 model User {
-  id             String     @id @default(uuid()) @map("id")
-  name           String     @map("name")
-  email          String     @unique @map("email")
-  phone          String?    @map("phone")
-  status         UserStatus @default(active) @map("status")
-  roleId         String     @map("role_id")
-  profilePicture String?    @map("profile_picture")
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
-  password       String?    @map("password")
+  id        BigInt   @id @default(autoincrement())
+  branchId  BigInt?  @map("branch_id")
+  roleId    BigInt   @map("role_id")
+  name      String
+  email     String   @unique
+  password  String?
+  createdAt DateTime @default(now()) @map("created_at")
 
-  role    Role      @relation(fields: [roleId], references: [id])
-  UserOtp UserOtp[]
+  branch   Branch? @relation(fields: [branchId], references: [id])
+  role     Role    @relation(fields: [roleId], references: [id])
+
+  invoices        Invoice[]
+  vouchersIssued  Voucher[]   @relation("VoucherIssuedBy")
+  confirmedOrders OnlineOrder[] @relation("ConfirmedBy")
+  packedOrders    OnlineOrder[] @relation("PackedBy")
+  shippedOrders   OnlineOrder[] @relation("ShippedBy")
+  shipments       Shipment[]
 
   @@map("users")
 }
 
-model Role {
-  id    String @id @default(uuid())
-  name  String @unique
-  users User[]
+model Category {
+  id       BigInt    @id @default(autoincrement())
+  name     String
+  products Product[]
+
+  @@map("categories")
 }
 
-model UserOtp {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  otp       String
-  expiresAt DateTime
-  used      Boolean  @default(false)
-  createdAt DateTime @default(now())
+model Brand {
+  id       BigInt    @id @default(autoincrement())
+  name     String
+  products Product[]
 
-  user User @relation(fields: [userId], references: [id])
+  @@map("brands")
+}
 
-  @@index([userId])
+model Product {
+  id          BigInt           @id @default(autoincrement())
+  name        String
+  description String?
+  brandId     BigInt?          @map("brand_id")
+  categoryId  BigInt?          @map("category_id")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  brand      Brand?           @relation(fields: [brandId], references: [id])
+  category   Category?        @relation(fields: [categoryId], references: [id])
+  variants   ProductVariant[]
+
+  @@map("products")
+}
+
+model ProductVariant {
+  id           BigInt   @id @default(autoincrement())
+  productId    BigInt   @map("product_id")
+  size         String?
+  color        String?
+  sku          String   @unique
+  barcode      String?  @unique
+  costPrice    Decimal  @map("cost_price") @db.Decimal(12, 2)
+  sellingPrice Decimal  @map("selling_price") @db.Decimal(12, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  product             Product               @relation(fields: [productId], references: [id])
+  inventory           Inventory[]
+  stockMovements      StockMovement[]
+  purchaseOrderItems  PurchaseOrderItem[]
+  invoiceItems        InvoiceItem[]
+  returnItems         ReturnItem[]
+  onlineOrderItems    OnlineOrderItem[]
+  stockTransferItems  StockTransferItem[]
+
+  @@map("product_variants")
+}
+
+model Inventory {
+  id            BigInt   @id @default(autoincrement())
+  variantId     BigInt   @map("variant_id")
+  branchId      BigInt   @map("branch_id")
+  stockQuantity Int      @default(0) @map("stock_quantity")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+  branch  Branch         @relation(fields: [branchId], references: [id])
+
+  @@unique([variantId, branchId])
+  @@map("inventory")
+}
+
+model StockMovement {
+  id          BigInt   @id @default(autoincrement())
+  variantId   BigInt   @map("variant_id")
+  branchId    BigInt   @map("branch_id")
+  type        String
+  quantity    Int
+  referenceId BigInt?  @map("reference_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+  branch  Branch         @relation(fields: [branchId], references: [id])
+
+  @@map("stock_movements")
+}
+
+// =====================================================
+// SUPPLIER & PURCHASE
+// =====================================================
+
+model Supplier {
+  id             BigInt          @id @default(autoincrement())
+  name           String
+  phone          String?
+  email          String?
+  address        String?
+  purchaseOrders PurchaseOrder[]
+
+  @@map("suppliers")
+}
+
+model PurchaseOrder {
+  id          BigInt              @id @default(autoincrement())
+  supplierId  BigInt              @map("supplier_id")
+  branchId    BigInt              @map("branch_id")
+  totalAmount Decimal             @default(0) @map("total_amount") @db.Decimal(12, 2)
+  status      String              @default("PENDING")
+  createdAt   DateTime            @default(now()) @map("created_at")
+
+  supplier Supplier        @relation(fields: [supplierId], references: [id])
+  branch   Branch          @relation(fields: [branchId], references: [id])
+  items    PurchaseOrderItem[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              BigInt   @id @default(autoincrement())
+  purchaseOrderId BigInt   @map("purchase_order_id")
+  variantId       BigInt   @map("variant_id")
+  quantity        Int
+  costPrice       Decimal  @map("cost_price") @db.Decimal(12, 2)
+
+  purchaseOrder PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id])
+  variant       ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+// =====================================================
+// CUSTOMERS
+// =====================================================
+
+model Customer {
+  id        BigInt   @id @default(autoincrement())
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  invoices      Invoice[]
+  couponUsages  CouponUsage[]
+  returns       Return[]
+  vouchers      Voucher[]
+  onlineOrders  OnlineOrder[]
+
+  @@map("customers")
+}
+
+// =====================================================
+// INVOICES (SHOP BILLING)
+// =====================================================
+
+model Coupon {
+  id                BigInt       @id @default(autoincrement())
+  code              String       @unique
+  description       String?
+  discountType      DiscountType @map("discount_type")
+  discountValue     Decimal      @map("discount_value") @db.Decimal(12, 2)
+  minPurchaseAmount Decimal?     @map("min_purchase_amount") @db.Decimal(12, 2)
+  maxDiscountAmount Decimal?     @map("max_discount_amount") @db.Decimal(12, 2)
+  usageLimit        Int?         @map("usage_limit")
+  usedCount         Int          @default(0) @map("used_count")
+  startDate         DateTime?    @map("start_date")
+  endDate           DateTime?    @map("end_date")
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  invoices     Invoice[]
+  couponUsages CouponUsage[]
+
+  @@map("coupons")
+}
+
+model CouponUsage {
+  id         BigInt   @id @default(autoincrement())
+  couponId   BigInt   @map("coupon_id")
+  invoiceId  BigInt   @map("invoice_id")
+  customerId BigInt?  @map("customer_id")
+  usedAt     DateTime @default(now()) @map("used_at")
+
+  coupon   Coupon   @relation(fields: [couponId], references: [id])
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  @@map("coupon_usages")
+}
+
+model Invoice {
+  id            BigInt        @id @default(autoincrement())
+  invoiceNumber String        @unique @map("invoice_number")
+  customerId    BigInt?       @map("customer_id")
+  branchId      BigInt        @map("branch_id")
+  userId        BigInt        @map("user_id")
+  couponId      BigInt?       @map("coupon_id")
+  subtotal      Decimal       @default(0) @db.Decimal(12, 2)
+  discount      Decimal       @default(0) @db.Decimal(12, 2)
+  tax           Decimal       @default(0) @db.Decimal(12, 2)
+  finalAmount   Decimal       @default(0) @map("final_amount") @db.Decimal(12, 2)
+  status        InvoiceStatus @default(DRAFT)
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+  branch       Branch        @relation(fields: [branchId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+  coupon       Coupon?       @relation(fields: [couponId], references: [id])
+  items        InvoiceItem[]
+  payments     Payment[]
+  couponUsages CouponUsage[]
+  returns      Return[]
+  vouchers     Voucher[]
+
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id        BigInt  @id @default(autoincrement())
+  invoiceId BigInt  @map("invoice_id")
+  variantId BigInt  @map("variant_id")
+  quantity  Int
+  price     Decimal @db.Decimal(12, 2)
+  subtotal  Decimal @db.Decimal(12, 2)
+
+  invoice Invoice        @relation(fields: [invoiceId], references: [id])
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@map("invoice_items")
+}
+
+model Payment {
+  id            BigInt   @id @default(autoincrement())
+  invoiceId     BigInt   @map("invoice_id")
+  paymentMethod String   @map("payment_method")
+  amount        Decimal  @db.Decimal(12, 2)
+  paidAt        DateTime @default(now()) @map("paid_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("payments")
+}
+
+// =====================================================
+// RETURNS (SHOP + ONLINE)
+// =====================================================
+
+model Return {
+  id            BigInt     @id @default(autoincrement())
+  returnType    ReturnType @map("return_type")
+  invoiceId     BigInt?    @map("invoice_id")
+  onlineOrderId BigInt?    @map("online_order_id")
+  branchId      BigInt     @map("branch_id")
+  customerId    BigInt?    @map("customer_id")
+  totalRefund   Decimal    @default(0) @map("total_refund") @db.Decimal(12, 2)
+  reason        String?
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  invoice      Invoice?      @relation(fields: [invoiceId], references: [id])
+  onlineOrder  OnlineOrder?  @relation(fields: [onlineOrderId], references: [id])
+  branch       Branch        @relation(fields: [branchId], references: [id])
+  customer     Customer?     @relation(fields: [customerId], references: [id])
+  items        ReturnItem[]
+
+  @@map("returns")
+}
+
+model ReturnItem {
+  id           BigInt  @id @default(autoincrement())
+  returnId     BigInt  @map("return_id")
+  variantId    BigInt  @map("variant_id")
+  quantity     Int
+  refundAmount Decimal @map("refund_amount") @db.Decimal(12, 2)
+
+  return  Return         @relation(fields: [returnId], references: [id])
+  variant ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@map("return_items")
+}
+
+// =====================================================
+// LUCKY DRAW
+// =====================================================
+
+model LuckyDrawCampaign {
+  id                 BigInt         @id @default(autoincrement())
+  name               String
+  description        String?
+  totalVouchersLimit Int            @map("total_vouchers_limit")
+  vouchersIssued     Int            @default(0) @map("vouchers_issued")
+  startDate          DateTime       @map("start_date")
+  endDate            DateTime       @map("end_date")
+  status             CampaignStatus @default(ACTIVE)
+  createdAt          DateTime       @default(now()) @map("created_at")
+
+  vouchers Voucher[]
+
+  @@map("lucky_draw_campaigns")
+}
+
+model Voucher {
+  id          BigInt   @id @default(autoincrement())
+  voucherCode String   @unique @map("voucher_code")
+  campaignId  BigInt   @map("campaign_id")
+  invoiceId   BigInt?  @map("invoice_id")
+  customerId  BigInt?  @map("customer_id")
+  branchId    BigInt   @map("branch_id")
+  issuedBy    BigInt   @map("issued_by")
+  issuedAt    DateTime @default(now()) @map("issued_at")
+
+  campaign LuckyDrawCampaign @relation(fields: [campaignId], references: [id])
+  invoice  Invoice?          @relation(fields: [invoiceId], references: [id])
+  customer Customer?         @relation(fields: [customerId], references: [id])
+  branch   Branch            @relation(fields: [branchId], references: [id])
+  issuer   User              @relation("VoucherIssuedBy", fields: [issuedBy], references: [id])
+
+  @@map("vouchers")
+}
+
+// =====================================================
+// ONLINE ORDERS (WAREHOUSE FLOW)
+// =====================================================
+
+model OnlineOrder {
+  id                BigInt      @id @default(autoincrement())
+  orderNumber       String      @unique @map("order_number")
+  customerId        BigInt      @map("customer_id")
+  warehouseBranchId BigInt      @map("warehouse_branch_id")
+  status            OrderStatus @default(PENDING)
+  confirmedBy       BigInt?     @map("confirmed_by")
+  packedBy          BigInt?     @map("packed_by")
+  shippedBy         BigInt?     @map("shipped_by")
+  subtotal          Decimal     @default(0) @db.Decimal(12, 2)
+  discount          Decimal     @default(0) @db.Decimal(12, 2)
+  tax               Decimal     @default(0) @db.Decimal(12, 2)
+  finalAmount       Decimal     @default(0) @map("final_amount") @db.Decimal(12, 2)
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  customer        Customer         @relation(fields: [customerId], references: [id])
+  warehouseBranch Branch           @relation(fields: [warehouseBranchId], references: [id])
+  confirmedByUser User?            @relation("ConfirmedBy", fields: [confirmedBy], references: [id])
+  packedByUser    User?            @relation("PackedBy", fields: [packedBy], references: [id])
+  shippedByUser   User?            @relation("ShippedBy", fields: [shippedBy], references: [id])
+  items           OnlineOrderItem[]
+  payments        OnlinePayment[]
+  shipments       Shipment[]
+  returns         Return[]
+
+  @@map("online_orders")
+}
+
+model OnlineOrderItem {
+  id            BigInt  @id @default(autoincrement())
+  onlineOrderId BigInt  @map("online_order_id")
+  variantId     BigInt  @map("variant_id")
+  quantity      Int
+  price         Decimal @db.Decimal(12, 2)
+  subtotal      Decimal @db.Decimal(12, 2)
+
+  onlineOrder OnlineOrder    @relation(fields: [onlineOrderId], references: [id])
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@map("online_order_items")
+}
+
+model OnlinePayment {
+  id            BigInt   @id @default(autoincrement())
+  onlineOrderId BigInt   @map("online_order_id")
+  paymentMethod String   @map("payment_method")
+  amount        Decimal  @db.Decimal(12, 2)
+  paidAt        DateTime @default(now()) @map("paid_at")
+
+  onlineOrder OnlineOrder @relation(fields: [onlineOrderId], references: [id])
+
+  @@map("online_payments")
+}
+
+// =====================================================
+// DELIVERY SYSTEM
+// =====================================================
+
+model DeliveryAgent {
+  id                  BigInt   @id @default(autoincrement())
+  name                String
+  contactPerson       String?  @map("contact_person")
+  phone               String?
+  email               String?
+  trackingUrlTemplate String?  @map("tracking_url_template")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  shipments Shipment[]
+
+  @@map("delivery_agents")
+}
+
+model Shipment {
+  id              BigInt    @id @default(autoincrement())
+  onlineOrderId   BigInt    @map("online_order_id")
+  deliveryAgentId BigInt    @map("delivery_agent_id")
+  trackingId      String?   @map("tracking_id")
+  trackingUrl     String?   @map("tracking_url")
+  shippedAt       DateTime? @map("shipped_at")
+  deliveredAt     DateTime? @map("delivered_at")
+  createdBy       BigInt    @map("created_by")
+
+  onlineOrder   OnlineOrder   @relation(fields: [onlineOrderId], references: [id])
+  deliveryAgent DeliveryAgent @relation(fields: [deliveryAgentId], references: [id])
+  creator       User          @relation(fields: [createdBy], references: [id])
+
+  @@map("shipments")
+}
+
+// =====================================================
+// STOCK TRANSFERS
+// =====================================================
+
+model StockTransfer {
+  id           BigInt         @id @default(autoincrement())
+  fromBranchId BigInt         @map("from_branch_id")
+  toBranchId   BigInt         @map("to_branch_id")
+  status       TransferStatus @default(PENDING)
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  fromBranch Branch              @relation("TransferFrom", fields: [fromBranchId], references: [id])
+  toBranch   Branch              @relation("TransferTo", fields: [toBranchId], references: [id])
+  items      StockTransferItem[]
+
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id              BigInt @id @default(autoincrement())
+  stockTransferId BigInt @map("stock_transfer_id")
+  variantId       BigInt @map("variant_id")
+  quantity        Int
+
+  stockTransfer StockTransfer  @relation(fields: [stockTransferId], references: [id])
+  variant       ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@map("stock_transfer_items")
 }

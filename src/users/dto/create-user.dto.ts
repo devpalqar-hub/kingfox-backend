@@ -1,5 +1,5 @@
-import { IsEmail, IsString, IsOptional, IsEnum, IsInt } from 'class-validator';
-import { UserStatus } from '@prisma/client';
+import { IsEmail, IsString, IsOptional, IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateUserDto {
   @IsString()
@@ -12,21 +12,13 @@ export class CreateUserDto {
   @IsOptional()
   password?: string;
 
-  @IsString()
+  @IsNumber()
   @IsOptional()
-  phone?: string;
+  @Type(() => Number)
+  roleId?: number;
 
-  @IsInt()
+  @IsNumber()
   @IsOptional()
-  priority?: number;
-
-  @IsString()
-  role: string;
-
-  @IsEnum(UserStatus)
-  @IsOptional()
-  status?: UserStatus = UserStatus.active;
-
-  @IsOptional()
-  stripe_customer_id?: string
+  @Type(() => Number)
+  branchId?: number;
 }
