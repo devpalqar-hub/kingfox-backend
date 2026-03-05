@@ -10,7 +10,13 @@ export class CouponsService {
   async create(dto: CreateCouponDto) {
     const existing = await this.prisma.coupon.findUnique({ where: { code: dto.code } });
     if (existing) throw new ConflictException('Coupon code already exists');
-    return this.prisma.coupon.create({ data: dto });
+    return this.prisma.coupon.create({
+      data: {
+        ...dto,
+        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+        endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+      },
+    });
   }
 
   findAll(active?: boolean) {
@@ -57,7 +63,14 @@ export class CouponsService {
 
   async update(id: number, dto: Partial<CreateCouponDto>) {
     await this.findOne(id);
-    return this.prisma.coupon.update({ where: { id }, data: dto });
+    return this.prisma.coupon.update({
+      where: { id },
+      data: {
+        ...dto,
+        startDate: dto.startDate ? new Date(dto.startDate) : undefined,
+        endDate: dto.endDate ? new Date(dto.endDate) : undefined,
+      },
+    });
   }
 
   async remove(id: number) {

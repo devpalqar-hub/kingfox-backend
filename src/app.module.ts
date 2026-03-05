@@ -24,6 +24,7 @@ import { OnlineOrdersModule } from './online-orders/online-orders.module';
 import { DeliveryAgentsModule } from './delivery-agents/delivery-agents.module';
 import { ShipmentsModule } from './shipments/shipments.module';
 import { StockTransfersModule } from './stock-transfers/stock-transfers.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { StockTransfersModule } from './stock-transfers/stock-transfers.module';
     DeliveryAgentsModule,
     ShipmentsModule,
     StockTransfersModule,
+    BillingModule,
   ],
 })
 export class AppModule {}
