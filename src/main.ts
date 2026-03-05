@@ -59,6 +59,7 @@ All protected endpoints require a **Bearer JWT** token.
     .setVersion('1.0')
     .setContact('Kingfox ERP Team', '', 'admin@kingfox.com')
     .addServer('http://localhost:3000', 'Local Development')
+    .addServer('https://api.kingfox.palqar.cloud', 'Staging')
     .addBearerAuth(
       {
         type: 'http',
@@ -96,7 +97,7 @@ All protected endpoints require a **Bearer JWT** token.
 
   SwaggerModule.setup('docs', app, document, {
     customSiteTitle: 'Kingfox ERP API Docs',
-    customfavIcon: 'https://nestjs.com/img/logo_text.svg',
+    //customfavIcon: 'https://nestjs.com/img/logo_text.svg',
     swaggerOptions: {
       persistAuthorization: true,
       // Show example request bodies by default
