@@ -4,6 +4,16 @@ import { AppModule } from './app.module';
 import { json, urlencoded } from 'express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
+// ─── BigInt JSON serialization fix ──────────────────────────────────────────
+// Prisma returns BigInt for all @id fields. Express's JSON.stringify
+// doesn't know how to handle BigInt natively, causing "Do not know how to
+// serialize a BigInt" errors. This one-liner converts every BigInt to a
+// Number (safe for IDs up to 2^53-1) before serialization.
+(BigInt.prototype as any).toJSON = function () {
+  return Number(this);
+};
+// ────────────────────────────────────────────────────────────────────────────
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -73,8 +83,9 @@ All protected endpoints require a **Bearer JWT** token.
     )
     // ── Tags in logical flow order ──────────────────────────────────────────
     .addTag('Auth', '🔐 Login, register, OTP verification')
+    .addTag('Billing', '🧾 Cashier/biller workflow — scan, bill, checkout, analytics')
     .addTag('Users', '👤 User management (admin only)')
-    .addTag('Roles', '🎭 Role management (admin only)')
+    .addTag('Roles', '🎭 Role management (admin only)') 
     .addTag('Branches', '🏪 Branch management — SHOP or WAREHOUSE')
     .addTag('Categories', '🏷️ Product category management')
     .addTag('Brands', '™️ Brand management')
