@@ -1,6 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsNotEmpty, IsNumber, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 
 export class CheckoutItemDto {
   @ApiProperty({ example: 1, description: 'Variant ID' })
@@ -36,33 +44,64 @@ export class BillingCheckoutDto {
   @Type(() => Number)
   userId: number;
 
-  @ApiPropertyOptional({ example: 1, description: 'Customer ID — omit for walk-in customers' })
-  @IsOptional()
-  @IsNumber()
-  @Type(() => Number)
-  customerId?: number;
+  // ── Customer (identified by phone, created automatically if new) ──────────
+  @ApiProperty({ example: '9901234567', description: "Customer's mobile number — used to find or create the customer" })
+  @IsNotEmpty()
+  @IsString()
+  customerPhone: string;
 
+  @ApiPropertyOptional({ example: 'Arjun Kumar', description: 'Customer name — required when the phone number is new' })
+  @IsOptional()
+  @IsString()
+  customerName?: string;
+
+  @ApiPropertyOptional({ example: 'arjun@email.com' })
+  @IsOptional()
+  @IsString()
+  customerEmail?: string;
+
+  @ApiPropertyOptional({ example: 'Porur, Chennai - 600116' })
+  @IsOptional()
+  @IsString()
+  customerAddress?: string;
+
+  // ── Discount ──────────────────────────────────────────────────────────────
   @ApiPropertyOptional({ example: 'FOXYDEAL', description: 'Coupon code to apply discount' })
   @IsOptional()
   @IsString()
   couponCode?: string;
 
-  @ApiPropertyOptional({ example: 'VKFX-20250001', description: 'Voucher code from lucky draw' })
+  // ── Vouchers (Lucky Draw) ────────────────────────────────────────────────
+  @ApiPropertyOptional({
+    example: ['VCH-1-1740000000001', 'VCH-1-1740000000002'],
+    description:
+      'Lucky draw voucher codes to redeem against this invoice. A customer may hold multiple vouchers from the same campaign. Each code is validated and linked to this invoice.',
+    type: [String],
+  })
   @IsOptional()
-  @IsString()
-  voucherCode?: string;
+  @IsArray()
+  @IsString({ each: true })
+  voucherCodes?: string[];
 
+  // ── Payment ───────────────────────────────────────────────────────────────
   @ApiProperty({ example: 'CASH', description: 'Payment method: CASH | UPI | CARD | CREDIT' })
   @IsNotEmpty()
   @IsString()
   paymentMethod: string;
 
-  @ApiPropertyOptional({ example: 18, description: 'Tax percentage (e.g. 18 for 18% GST)', default: 0 })
+  // ── Tax / GST ─────────────────────────────────────────────────────────────
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'GST percentage applied on the discounted subtotal (e.g. 5 for 5%). Defaults to 0.',
+    default: 0,
+  })
   @IsOptional()
   @IsNumber()
+  @Min(0)
   @Type(() => Number)
-  tax?: number;
+  gstPercent?: number;
 
+  // ── Items ─────────────────────────────────────────────────────────────────
   @ApiProperty({
     type: [CheckoutItemDto],
     description: 'Items being sold — use prices confirmed from /billing/preview',

@@ -10,7 +10,6 @@ import { ResponseModule } from './response/response.module';
 import { BranchesModule } from './branches/branches.module';
 import { RolesModule } from './roles/roles.module';
 import { CategoriesModule } from './categories/categories.module';
-import { BrandsModule } from './brands/brands.module';
 import { ProductsModule } from './products/products.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
@@ -40,7 +39,6 @@ import { BillingModule } from './billing/billing.module';
     BranchesModule,
     RolesModule,
     CategoriesModule,
-    BrandsModule,
     ProductsModule,
     InventoryModule,
     SuppliersModule,

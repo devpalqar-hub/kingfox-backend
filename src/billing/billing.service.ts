@@ -5,11 +5,9 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponsService } from '../coupons/coupons.service';
-import { CustomersService } from '../customers/customers.service';
 import { ReturnsService } from '../returns/returns.service';
 import { BillingPreviewDto } from './dto/billing-preview.dto';
 import { BillingCheckoutDto } from './dto/billing-checkout.dto';
-import { QuickCustomerDto } from './dto/quick-customer.dto';
 import { CreateReturnDto } from '../returns/dto/create-return.dto';
 
 @Injectable()
@@ -17,7 +15,6 @@ export class BillingService {
   constructor(
     private prisma: PrismaService,
     private couponsService: CouponsService,
-    private customersService: CustomersService,
     private returnsService: ReturnsService,
   ) {}
 
@@ -33,8 +30,28 @@ export class BillingService {
     return customer ?? null;
   }
 
-  async quickCreateCustomer(dto: QuickCustomerDto) {
-    return this.customersService.create(dto);
+  /**
+   * Internal: find customer by phone or create a new one.
+   * Used automatically during checkout.
+   */
+  private async resolveCustomer(
+    phone: string,
+    name?: string,
+    email?: string,
+    address?: string,
+  ) {
+    const existing = await this.prisma.customer.findFirst({ where: { phone } });
+    if (existing) return existing;
+
+    if (!name) {
+      throw new BadRequestException(
+        `No customer found with phone ${phone}. Provide customerName to create a new one.`,
+      );
+    }
+
+    return this.prisma.customer.create({
+      data: { phone, name, email, address },
+    });
   }
 
   // ─── Product Search / Scan ───────────────────────────────────────────────────
@@ -53,7 +70,7 @@ export class BillingService {
         ],
       },
       include: {
-        product: { include: { brand: true, category: true } },
+        product: { include: { category: true } },
         inventory: {
           where: { branchId: BigInt(branchId) },
         },
@@ -71,7 +88,7 @@ export class BillingService {
     const variant = await this.prisma.productVariant.findUnique({
       where: { barcode },
       include: {
-        product: { include: { brand: true, category: true } },
+        product: { include: { category: true } },
         inventory: {
           where: { branchId: BigInt(branchId) },
         },
@@ -98,7 +115,6 @@ export class BillingService {
         id: Number(variant.product.id),
         name: variant.product.name,
         description: variant.product.description,
-        brand: variant.product.brand?.name ?? null,
         category: variant.product.category?.name ?? null,
       },
     };
@@ -108,11 +124,19 @@ export class BillingService {
 
   /**
    * Calculates the bill total without saving anything.
-   * Fetches current selling price from DB so the frontend doesn't need to send prices.
+   * Call this every time an item is added or removed.
+   * Fetches current selling price from DB — frontend only sends variantId + qty.
    */
   async previewBill(dto: BillingPreviewDto) {
-    // Resolve items with prices from DB
-    const resolvedItems: { variantId: number; quantity: number; price: number; subtotal: number; variantInfo: any }[] = [];
+    const gstPercent = dto.gstPercent ?? 0;
+
+    const resolvedItems: {
+      variantId: number;
+      quantity: number;
+      price: number;
+      subtotal: number;
+      variantInfo: any;
+    }[] = [];
 
     for (const item of dto.items) {
       const variant = await this.prisma.productVariant.findUnique({
@@ -150,7 +174,7 @@ export class BillingService {
     let discount = 0;
     let couponDetails: any = null;
 
-    // Apply coupon
+    // Apply coupon discount
     if (dto.couponCode) {
       const result = await this.couponsService.validate(dto.couponCode, subtotal);
       discount = result.discount;
@@ -162,24 +186,36 @@ export class BillingService {
       };
     }
 
-    const finalAmount = subtotal - discount;
+    const discountedSubtotal = Math.max(0, subtotal - discount);
+    const gstAmount = parseFloat(((discountedSubtotal * gstPercent) / 100).toFixed(2));
+    const finalAmount = parseFloat((discountedSubtotal + gstAmount).toFixed(2));
 
     return {
       items: resolvedItems.map(({ variantInfo, ...rest }) => ({ ...rest, ...variantInfo })),
       subtotal,
       coupon: couponDetails,
       discount,
-      tax: 0,
-      finalAmount: finalAmount < 0 ? 0 : finalAmount,
+      gstPercent,
+      gstAmount,
+      finalAmount,
     };
   }
 
   // ─── Checkout (Create Invoice) ───────────────────────────────────────────────
 
   async checkout(dto: BillingCheckoutDto) {
-    // Validate coupon if provided
+    const gstPercent = dto.gstPercent ?? 0;
+
+    // Resolve or create customer by phone
+    const customer = await this.resolveCustomer(
+      dto.customerPhone,
+      dto.customerName,
+      dto.customerEmail,
+      dto.customerAddress,
+    );
+
+    // Compute totals
     const subtotal = dto.items.reduce((s, i) => s + i.quantity * i.price, 0);
-    const tax = dto.tax ?? 0;
     let discount = 0;
     let couponId: bigint | undefined;
 
@@ -189,7 +225,9 @@ export class BillingService {
       couponId = result.coupon.id;
     }
 
-    const finalAmount = Math.max(0, subtotal + tax - discount);
+    const discountedSubtotal = Math.max(0, subtotal - discount);
+    const tax = parseFloat(((discountedSubtotal * gstPercent) / 100).toFixed(2));
+    const finalAmount = parseFloat((discountedSubtotal + tax).toFixed(2));
 
     const invoice = await this.prisma.$transaction(async (tx) => {
       // Stock validation
@@ -207,11 +245,23 @@ export class BillingService {
         }
       }
 
+      // Validate all voucher codes before creating the invoice
+      const voucherCodes = dto.voucherCodes ?? [];
+      for (const code of voucherCodes) {
+        const voucher = await tx.voucher.findUnique({ where: { voucherCode: code } });
+        if (!voucher) {
+          throw new NotFoundException(`Voucher code "${code}" not found`);
+        }
+        if (voucher.invoiceId !== null) {
+          throw new BadRequestException(`Voucher "${code}" has already been redeemed against invoice #${voucher.invoiceId}`);
+        }
+      }
+
       // Create invoice
       const created = await tx.invoice.create({
         data: {
           invoiceNumber: `INV-${Date.now().toString().slice(-8)}`,
-          customerId: dto.customerId ? BigInt(dto.customerId) : null,
+          customerId: customer.id,
           branchId: BigInt(dto.branchId),
           userId: BigInt(dto.userId),
           couponId: couponId ? BigInt(couponId) : null,
@@ -260,12 +310,20 @@ export class BillingService {
           data: {
             couponId: BigInt(couponId),
             invoiceId: created.id,
-            customerId: dto.customerId ? BigInt(dto.customerId) : null,
+            customerId: customer.id,
           },
         });
         await tx.coupon.update({
           where: { id: BigInt(couponId) },
           data: { usedCount: { increment: 1 } },
+        });
+      }
+
+      // Link voucher codes to this invoice (redeem)
+      for (const code of voucherCodes) {
+        await tx.voucher.update({
+          where: { voucherCode: code },
+          data: { invoiceId: created.id },
         });
       }
 
@@ -292,10 +350,11 @@ export class BillingService {
         items: {
           include: {
             variant: {
-              include: { product: { include: { brand: true } } },
+              include: { product: true },
             },
           },
         },
+        vouchers: { include: { campaign: true } },
         payments: true,
       },
     });
@@ -391,7 +450,7 @@ export class BillingService {
       include: {
         variant: {
           include: {
-            product: { include: { brand: true, category: true } },
+            product: { include: { category: true } },
           },
         },
       },
@@ -425,23 +484,15 @@ export class BillingService {
     };
 
     const [invoices, returns, topVariants] = await Promise.all([
-      // All completed invoices
       this.prisma.invoice.findMany({
         where: invoiceWhere,
-        include: {
-          items: true,
-          payments: true,
-        },
+        include: { items: true, payments: true },
         orderBy: { createdAt: 'asc' },
       }),
-
-      // All returns
       this.prisma.return.findMany({
         where: returnWhere,
         include: { items: true },
       }),
-
-      // Top 5 selling variants
       this.prisma.invoiceItem.groupBy({
         by: ['variantId'],
         where: { invoice: invoiceWhere },

@@ -18,7 +18,7 @@ export class PreviewItemDto {
 }
 
 export class BillingPreviewDto {
-  @ApiProperty({ example: 1, description: 'Shop branch ID (must be type SHOP)' })
+  @ApiProperty({ example: 1, description: 'Shop branch ID' })
   @IsNotEmpty()
   @IsNumber()
   @Type(() => Number)
@@ -26,7 +26,7 @@ export class BillingPreviewDto {
 
   @ApiProperty({
     type: [PreviewItemDto],
-    description: 'Items to include in the bill preview',
+    description: 'All items currently in the bill — call this endpoint each time an item is added or removed',
     example: [
       { variantId: 1, quantity: 2 },
       { variantId: 5, quantity: 1 },
@@ -37,13 +37,19 @@ export class BillingPreviewDto {
   @Type(() => PreviewItemDto)
   items: PreviewItemDto[];
 
-  @ApiPropertyOptional({ example: 'FOXYDEAL', description: 'Coupon code to apply' })
+  @ApiPropertyOptional({ example: 'FOXYDEAL', description: 'Coupon code to apply a discount' })
   @IsOptional()
   @IsString()
   couponCode?: string;
 
-  @ApiPropertyOptional({ example: 'VKFX-20250001', description: 'Voucher code to apply' })
+  @ApiPropertyOptional({
+    example: 5,
+    description: 'GST percentage to apply on the discounted subtotal (e.g. 5 for 5%). Defaults to 0.',
+    default: 0,
+  })
   @IsOptional()
-  @IsString()
-  voucherCode?: string;
+  @IsNumber()
+  @Min(0)
+  @Type(() => Number)
+  gstPercent?: number;
 }
