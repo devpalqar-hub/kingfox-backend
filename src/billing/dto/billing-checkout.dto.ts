@@ -32,25 +32,13 @@ export class CheckoutItemDto {
 }
 
 export class BillingCheckoutDto {
-  @ApiProperty({ example: 1, description: 'Shop branch ID' })
-  @IsNotEmpty()
-  @IsNumber()
-  @Type(() => Number)
-  branchId: number;
-
-  @ApiProperty({ example: 6, description: 'Cashier / biller User ID (logged-in user)' })
-  @IsNotEmpty()
-  @IsNumber()
-  @Type(() => Number)
-  userId: number;
-
-  // ── Customer (identified by phone, created automatically if new) ──────────
+  // ── Customer (identified by phone) ────────────────────────────────────────
   @ApiProperty({ example: '9901234567', description: "Customer's mobile number — used to find or create the customer" })
   @IsNotEmpty()
   @IsString()
   customerPhone: string;
 
-  @ApiPropertyOptional({ example: 'Arjun Kumar', description: 'Customer name — required when the phone number is new' })
+  @ApiPropertyOptional({ example: 'Arjun Kumar', description: 'Required when the phone number is new' })
   @IsOptional()
   @IsString()
   customerName?: string;
@@ -74,8 +62,7 @@ export class BillingCheckoutDto {
   // ── Vouchers (Lucky Draw) ────────────────────────────────────────────────
   @ApiPropertyOptional({
     example: ['VCH-1-1740000000001', 'VCH-1-1740000000002'],
-    description:
-      'Lucky draw voucher codes to redeem against this invoice. A customer may hold multiple vouchers from the same campaign. Each code is validated and linked to this invoice.',
+    description: 'Lucky draw voucher codes to redeem against this invoice.',
     type: [String],
   })
   @IsOptional()
@@ -92,7 +79,7 @@ export class BillingCheckoutDto {
   // ── Tax / GST ─────────────────────────────────────────────────────────────
   @ApiPropertyOptional({
     example: 5,
-    description: 'GST percentage applied on the discounted subtotal (e.g. 5 for 5%). Defaults to 0.',
+    description: 'GST percentage on the discounted subtotal. Defaults to 0.',
     default: 0,
   })
   @IsOptional()
@@ -104,11 +91,8 @@ export class BillingCheckoutDto {
   // ── Items ─────────────────────────────────────────────────────────────────
   @ApiProperty({
     type: [CheckoutItemDto],
-    description: 'Items being sold — use prices confirmed from /billing/preview',
-    example: [
-      { variantId: 1, quantity: 2, price: 350 },
-      { variantId: 5, quantity: 1, price: 950 },
-    ],
+    description: 'Items being sold — use prices from /billing/preview',
+    example: [{ variantId: 1, quantity: 2, price: 350 }, { variantId: 5, quantity: 1, price: 950 }],
   })
   @IsArray()
   @ValidateNested({ each: true })

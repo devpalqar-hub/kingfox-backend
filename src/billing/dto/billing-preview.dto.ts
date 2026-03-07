@@ -18,19 +18,10 @@ export class PreviewItemDto {
 }
 
 export class BillingPreviewDto {
-  @ApiProperty({ example: 1, description: 'Shop branch ID' })
-  @IsNotEmpty()
-  @IsNumber()
-  @Type(() => Number)
-  branchId: number;
-
   @ApiProperty({
     type: [PreviewItemDto],
-    description: 'All items currently in the bill — call this endpoint each time an item is added or removed',
-    example: [
-      { variantId: 1, quantity: 2 },
-      { variantId: 5, quantity: 1 },
-    ],
+    description: 'All items in the current bill — call this each time an item is added/removed',
+    example: [{ variantId: 1, quantity: 2 }, { variantId: 5, quantity: 1 }],
   })
   @IsArray()
   @ValidateNested({ each: true })
@@ -44,7 +35,7 @@ export class BillingPreviewDto {
 
   @ApiPropertyOptional({
     example: 5,
-    description: 'GST percentage to apply on the discounted subtotal (e.g. 5 for 5%). Defaults to 0.',
+    description: 'GST percentage on the discounted subtotal (e.g. 5 for 5%). Defaults to 0.',
     default: 0,
   })
   @IsOptional()

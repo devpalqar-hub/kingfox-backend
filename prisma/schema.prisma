@@ -21,6 +21,7 @@ enum InvoiceStatus {
   COMPLETED
   CANCELLED
   RETURNED
+  PARTIALLY_RETURNED
 }
 
 enum OrderStatus {
@@ -51,6 +52,7 @@ enum TransferStatus {
 enum ReturnType {
   INVOICE
   ONLINE_ORDER
+  PARTIAL_RETURN
 }
 
 // =====================================================
@@ -304,6 +306,7 @@ model Invoice {
   subtotal      Decimal       @default(0) @db.Decimal(12, 2)
   discount      Decimal       @default(0) @db.Decimal(12, 2)
   tax           Decimal       @default(0) @db.Decimal(12, 2)
+  returnCredit  Decimal       @default(0) @map("return_credit") @db.Decimal(12, 2)
   finalAmount   Decimal       @default(0) @map("final_amount") @db.Decimal(12, 2)
   status        InvoiceStatus @default(DRAFT)
   createdAt     DateTime      @default(now()) @map("created_at")
@@ -318,6 +321,7 @@ model Invoice {
   returns        Return[]
   vouchers       Voucher[]
   billingSession BillingSession?
+  exchangeReturn Return?        @relation("ExchangeInvoice")
 
   @@map("invoices")
 }
@@ -353,21 +357,23 @@ model Payment {
 // =====================================================
 
 model Return {
-  id            BigInt     @id @default(autoincrement())
-  returnType    ReturnType @map("return_type")
-  invoiceId     BigInt?    @map("invoice_id")
-  onlineOrderId BigInt?    @map("online_order_id")
-  branchId      BigInt     @map("branch_id")
-  customerId    BigInt?    @map("customer_id")
-  totalRefund   Decimal    @default(0) @map("total_refund") @db.Decimal(12, 2)
-  reason        String?
-  createdAt     DateTime   @default(now()) @map("created_at")
+  id                BigInt     @id @default(autoincrement())
+  returnType        ReturnType @map("return_type")
+  invoiceId         BigInt?    @map("invoice_id")
+  onlineOrderId     BigInt?    @map("online_order_id")
+  branchId          BigInt     @map("branch_id")
+  customerId        BigInt?    @map("customer_id")
+  totalRefund       Decimal    @default(0) @map("total_refund") @db.Decimal(12, 2)
+  reason            String?
+  exchangeInvoiceId BigInt?    @unique @map("exchange_invoice_id")
+  createdAt         DateTime   @default(now()) @map("created_at")
 
-  invoice      Invoice?      @relation(fields: [invoiceId], references: [id])
-  onlineOrder  OnlineOrder?  @relation(fields: [onlineOrderId], references: [id])
-  branch       Branch        @relation(fields: [branchId], references: [id])
-  customer     Customer?     @relation(fields: [customerId], references: [id])
-  items        ReturnItem[]
+  invoice         Invoice?      @relation(fields: [invoiceId], references: [id])
+  onlineOrder     OnlineOrder?  @relation(fields: [onlineOrderId], references: [id])
+  branch          Branch        @relation(fields: [branchId], references: [id])
+  customer        Customer?     @relation(fields: [customerId], references: [id])
+  exchangeInvoice Invoice?      @relation("ExchangeInvoice", fields: [exchangeInvoiceId], references: [id])
+  items           ReturnItem[]
 
   @@map("returns")
 }
